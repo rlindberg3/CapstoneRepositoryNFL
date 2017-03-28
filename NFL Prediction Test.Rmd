@@ -1,0 +1,496 @@
+---
+title: "Predicting NFL Statistic"
+author: "Rich L"
+date: "March 27, 2017"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+# Predicting NFL Stats
+
+The goal of this capstone project was to set a baseline linear regression for predicting NFL statistics.  The use of the analysis would be to project player performance and see if the team I am working with needs to consider making adjustments given various factors of the upcoming game/season.
+
+### Where to get the data
+
+I went to the website [http://armchairanalysis.com/data.php](www.armchairanlysis.com).  I have a subscription to the database, so I connected into it via SQL.  I downloaded the historical database onto my hard drive, and mapped it in MySQL.
+
+I then queried the DB to get the fields I would need.  This operation took extensive time, so once it ran, I exported to a csv file, then read the csv into R.
+
+```{r }
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+nfl_data <- read.csv("NFL_offense.csv")
+```
+
+The data is pretty clean from armchairanalyis, [fivethirtyeight.com](www.fivethirtyeight.com) uses this website for its sports data, so it is a pretty reputable site.
+
+I felt there were pieces of data either missing, or needing cleaning up.  This brought on the fun process of cleaning and tidying the data.
+
+#### Weather and field conditions
+
+From a qualitative perspective, we know that field turf and ideal temperatures are the least inhibitive towards speed, according to players themselves.  I wanted to identify extremes and hinderences.
+
+I replaced all "NULL" temp fields with a generic "room" temperature assumption.
+
+cold_weather and hot_weather were fields created to identify extreme ends of the temperature spectrum, and see if they have an impact on play
+```{r }
+#make all null temperatures at game time "room" temperature
+nfl_data$temp[nfl_data$temp == "NULL"] <- 70
+nfl_data$temp <- as.integer(nfl_data$temp)
+
+#highlight temp extremes
+nfl_data <- mutate(nfl_data, cold_weather= ifelse(temp < 45, 1,0))
+nfl_data <- mutate(nfl_data, hot_weather=  ifelse(temp > 85, 1,0))
+
+#weather factors
+nfl_data <- mutate(nfl_data, grass_1 = ifelse(surf == "DD GrassMaster" | surf == "Grass",
+                                              1,0))
+nfl_data <- mutate(nfl_data, bad_weather_1 = ifelse(cond == "Light Rain" | 
+                                                      cond == "Rain" |
+                                                      cond == "Flurries" |
+                                                      cond == "Snow" |
+                                                      cond == "Foggy" |
+                                                      cond == "Windy" |
+                                                      cond == "Hazy" |
+                                                      cond == "Thunderstorms"|
+                                                      cond == "Light Snow" |
+                                                      cond == "Light Showers" ,1,0))
+
+```
+
+#### Home field advantage
+Do players play better at home?
+```{r }
+#identify home team
+nfl_data$h <- as.character(nfl_data$h)
+nfl_data$team <- as.character(nfl_data$team)
+nfl_data <- mutate(nfl_data, home_team_1=  ifelse(h == team, 1,0))
+```
+
+#### Positions
+Ignoring player stats, does the position matter
+```{r eval=FALSE}
+#identify position
+nfl_data <- mutate(nfl_data, is_WR =  ifelse(pos1 == "WR", 1,0))
+nfl_data <- mutate(nfl_data, is_TE =  ifelse(pos1 == "TE", 1,0))
+nfl_data <- mutate(nfl_data, is_RB =  ifelse(pos1 == "RB", 1,0))
+nfl_data <- mutate(nfl_data, is_QB =  ifelse(pos1 == "QB", 1,0))
+```
+
+#### Age
+Every year players get older, so we want to know "Does father time impact player performance?"
+```{r eval=FALSE}
+#age
+nfl_data <- mutate(nfl_data, age = year - yob)
+```
+
+#### Combine cleanup
+The NFL combine is an event where prospective new players work out for the entire league to see.  Their physical measurements are taken, and people find merit in this event.  I wanted to see if these stats had any impact on player performance.  Not all players attend the combine.  For the fields where there are zeroes for the combine stat, I took the average for all non-zero stats for that position.  This basically implies if you didn't attend the combine, your stats are middle of the road.
+
+```{r }
+#replace 0 forty with avg for position
+nfl_data <- nfl_data %>%
+  group_by(pos1)%>%
+  mutate(forty1 = ifelse(forty == 0, mean(forty[forty>0]), forty))
+#replace 0 vertical with average for position
+nfl_data <- nfl_data %>%
+  group_by(pos1)%>%
+  mutate(vertical1 = ifelse(vertical == 0, mean(vertical[vertical>0]), vertical))
+#replace 0 arm length with formula for 40% of height is arm
+nfl_data$arm <- ifelse(nfl_data$arm == 0, nfl_data$height*0.4, nfl_data$arm)
+nfl_data <- nfl_data %>%
+  group_by(pos1)%>%
+  mutate(shuttle1 = ifelse(shuttle == 0, mean(shuttle[shuttle>0]), shuttle))
+nfl_data <- nfl_data %>%
+  group_by(pos1)%>%
+  mutate(cone1 = ifelse(cone == 0, mean(cone[cone>0]), cone))
+```
+
+#### NFL Teams
+I created fields for teams (1 if player plays for that team in the header 0 if it doesn't).  I also cleaned up one team:  The St Louis/LA Rams.  The Rams moved in 2016 to LA, so the conditions of stadium changed.  I combined the field into a single field.
+```{r }
+#clean teams and give each team a field
+nfl_data <- mutate(nfl_data, Teams =  ifelse(team == "STL" | team == "LA", "STL/LA",team))
+nfl_data <- mutate(nfl_data, ARI = ifelse(Teams == "ARI",1,0))
+nfl_data <- mutate(nfl_data, ATL = ifelse(Teams == "ATL",1,0))
+nfl_data <- mutate(nfl_data, BAL = ifelse(Teams == "BAL",1,0))
+nfl_data <- mutate(nfl_data, BUF = ifelse(Teams == "BUF",1,0))
+nfl_data <- mutate(nfl_data, CAR = ifelse(Teams == "CAR",1,0))
+nfl_data <- mutate(nfl_data, CHI = ifelse(Teams == "CHI",1,0))
+nfl_data <- mutate(nfl_data, CIN = ifelse(Teams == "CIN",1,0))
+nfl_data <- mutate(nfl_data, CLE = ifelse(Teams == "CLE",1,0))
+nfl_data <- mutate(nfl_data, DAL = ifelse(Teams == "DAL",1,0))
+nfl_data <- mutate(nfl_data, DEN = ifelse(Teams == "DEN",1,0))
+nfl_data <- mutate(nfl_data, DET = ifelse(Teams == "DET",1,0))
+nfl_data <- mutate(nfl_data, GB = ifelse(Teams == "GB",1,0))
+nfl_data <- mutate(nfl_data, HOU = ifelse(Teams == "HOU",1,0))
+nfl_data <- mutate(nfl_data, IND = ifelse(Teams == "IND",1,0))
+nfl_data <- mutate(nfl_data, JAC = ifelse(Teams == "JAC",1,0))
+nfl_data <- mutate(nfl_data, KC = ifelse(Teams == "KC",1,0))
+nfl_data <- mutate(nfl_data, MIA = ifelse(Teams == "MIA",1,0))
+nfl_data <- mutate(nfl_data, MINN = ifelse(Teams == "MIN",1,0))
+nfl_data <- mutate(nfl_data, NE = ifelse(Teams == "NE",1,0))
+nfl_data <- mutate(nfl_data, NOR = ifelse(Teams == "NO",1,0))
+nfl_data <- mutate(nfl_data, NYG = ifelse(Teams == "NYG",1,0))
+nfl_data <- mutate(nfl_data, NYJ = ifelse(Teams == "NYJ",1,0))
+nfl_data <- mutate(nfl_data, OAK = ifelse(Teams == "OAK",1,0))
+nfl_data <- mutate(nfl_data, PHI = ifelse(Teams == "PHI",1,0))
+nfl_data <- mutate(nfl_data, PIT = ifelse(Teams == "PIT",1,0))
+nfl_data <- mutate(nfl_data, SD = ifelse(Teams == "SD",1,0))
+nfl_data <- mutate(nfl_data, SEA = ifelse(Teams == "SEA",1,0))
+nfl_data <- mutate(nfl_data, SF = ifelse(Teams == "SF",1,0))
+nfl_data <- mutate(nfl_data, STL = ifelse(Teams == "STL/LA",1,0))
+nfl_data <- mutate(nfl_data, TB = ifelse(Teams == "TB",1,0))
+nfl_data <- mutate(nfl_data, TEN = ifelse(Teams == "TEN",1,0))
+nfl_data <- mutate(nfl_data, WAS = ifelse(Teams == "WAS",1,0))
+```
+
+### Receiving Stats
+For receiving, I wanted to get every players average:
+* yards
+* receptions
+* targets
+* touchdowns
+
+I also wanted to get every position average, and average for team.  Rationale for at least having that info is this:
+Compare player to team to league wide position
+```{r }
+#calculate the averages by player, position, and team
+#receiving
+nfl_data <- nfl_data %>%
+              group_by(player.1)%>%
+                mutate(avg_recy_plyr = mean(recy))
+nfl_data <- nfl_data %>%
+              group_by(pos1)%>%
+                mutate(avg_recy_pos = mean(recy))
+nfl_data <- nfl_data %>%
+              group_by(Teams)%>%
+                mutate(avg_recy_team = mean(recy))
+nfl_data <- nfl_data %>%
+              group_by(player.1)%>%
+                mutate(avg_rec_plyr = mean(rec))
+nfl_data <- nfl_data %>%
+              group_by(pos1)%>%
+                mutate(avg_rec_pos = mean(rec))
+nfl_data <- nfl_data %>%
+              group_by(Teams)%>%
+                mutate(avg_rec_team = mean(rec))
+nfl_data <- nfl_data %>%
+              group_by(player.1)%>%
+                mutate(avg_trg_plyr = mean(trg))
+nfl_data <- nfl_data %>%
+              group_by(pos1)%>%
+                mutate(avg_trg_pos = mean(trg))
+nfl_data <- nfl_data %>%
+              group_by(Teams)%>%
+                mutate(avg_trg_team = mean(trg))
+nfl_data <- nfl_data %>%
+              group_by(player.1)%>%
+                mutate(avg_rectd_plyr = mean(tdrec))
+nfl_data <- nfl_data %>%
+              group_by(pos1)%>%
+                mutate(avg_rectd_pos = mean(tdrec))
+nfl_data <- nfl_data %>%
+              group_by(Teams)%>%
+                mutate(avg_rectd_team = mean(tdrec))
+
+```
+
+### Running Stats
+I followed a similar process from up above.  
+The stats I was looking for the mean for were:
+* rushing attempts
+* rushing yards
+* fumbles
+```{r }
+#running
+nfl_data <- nfl_data %>%
+  group_by(player.1)%>%
+  mutate(avg_rbra_plyr = mean(ra))
+
+nfl_data <- nfl_data %>%
+  group_by(Teams)%>%
+  mutate(avg_rbra_team = mean(ra))
+
+nfl_data <- nfl_data %>%
+  group_by(pos1)%>%
+  mutate(avg_rbra_pos = mean(ra))
+
+nfl_data <- nfl_data %>%
+  group_by(player.1)%>%
+  mutate(avg_rbry_plyr = mean(ry))
+
+nfl_data <- nfl_data %>%
+  group_by(Teams)%>%
+  mutate(avg_rbry_team = mean(ry))
+
+nfl_data <- nfl_data %>%
+  group_by(pos1)%>%
+  mutate(avg_rbry_pos = mean(ry))
+
+nfl_data <- nfl_data %>%
+  group_by(player.1)%>%
+  mutate(avg_fuml_plyr = mean(fuml))
+
+nfl_data <- nfl_data %>%
+  group_by(Teams)%>%
+  mutate(avg_fuml_team = mean(fuml))
+
+nfl_data <- nfl_data %>%
+  group_by(pos1)%>%
+  mutate(avg_fuml_pos = mean(fuml))  
+
+nfl_data <- nfl_data %>%
+  group_by(player.1)%>%
+  mutate(avg_tdr_plyr = mean(tdr))
+
+nfl_data <- nfl_data %>%
+  group_by(pos1)%>%
+  mutate(avg_tdr_pos = mean(tdr))
+
+nfl_data <- nfl_data %>%
+  group_by(Teams)%>%
+  mutate(avg_tdr_team = mean(tdr))
+
+```
+
+### Passing
+I followed a similar process from up above.  
+The stats I was looking for the mean for were:
+* passing yards
+* passing attempts
+* passing completions
+* passing touchdowns
+* interceptions
+```{r }
+#passing
+nfl_data <- nfl_data %>%
+  group_by(player.1)%>%
+  mutate(avg_qbpy_plyr = mean(py))
+
+nfl_data <- nfl_data %>%
+  group_by(Teams)%>%
+  mutate(avg_qbpy_team = mean(py))
+
+nfl_data <- nfl_data %>%
+  group_by(pos1)%>%
+  mutate(avg_qbpy_pos = mean(py))
+
+
+nfl_data <- nfl_data %>%
+  group_by(player.1)%>%
+  mutate(avg_qbpc_plyr = mean(pc))
+
+nfl_data <- nfl_data %>%
+  group_by(Teams)%>%
+  mutate(avg_qbpc_team = mean(pc))
+
+nfl_data <- nfl_data %>%
+  group_by(pos1)%>%
+  mutate(avg_qbpc_pos = mean(pc))
+
+nfl_data <- nfl_data %>%
+  group_by(player.1)%>%
+  mutate(avg_qbints_plyr = mean(ints))
+
+nfl_data <- nfl_data %>%
+  group_by(Teams)%>%
+  mutate(avg_qbints_team = mean(ints))
+
+nfl_data <- nfl_data %>%
+  group_by(pos1)%>%
+  mutate(avg_qbints_pos = mean(ints))
+
+nfl_data <- nfl_data %>%
+  group_by(player.1)%>%
+  mutate(avg_qbtdp_plyr = mean(tdp))
+
+nfl_data <- nfl_data %>%
+  group_by(Teams)%>%
+  mutate(avg_qbtdp_team = mean(tdp))
+
+nfl_data <- nfl_data %>%
+  group_by(pos1)%>%
+  mutate(avg_qbtdp_pos = mean(tdp))
+
+nfl_data <- nfl_data %>%
+  group_by(player.1)%>%
+  mutate(avg_qbpa_plyr = mean(pa))
+
+nfl_data <- nfl_data %>%
+  group_by(Teams)%>%
+  mutate(avg_qbpa_team = mean(pa))
+
+nfl_data <- nfl_data %>%
+  group_by(pos1)%>%
+  mutate(avg_qbpa_pos = mean(pa))
+
+```
+
+
+#### Age
+There is an age component to a graph I show later, but here is the code right here
+
+
+## Receiving Regressions
+**Receiving Yards first run
+```{r}
+linRegrecy <- lm(recy ~ height+ weight + cold_weather + hot_weather + home_team_1+ temp+ forty1 + vertical1  + shuttle1+ cone1 + ARI + ATL + BAL + BUF + CAR + CHI+CIN + CLE + DAL + DEN + DET + GB + HOU + IND + JAC + KC + MIA + MINN + NE + NOR + NYG+
+                   NYJ + OAK + PHI + PIT +SD + SEA + STL + TB + TEN + WAS + avg_recy_plyr+avg_recy_pos + 
+                   avg_recy_team + avg_rec_plyr +avg_rec_pos + avg_rec_team +avg_trg_plyr + avg_trg_pos +
+                   avg_trg_team + avg_rectd_plyr + avg_rectd_pos +avg_rectd_team+
+                   avg_tdr_plyr + avg_tdr_pos + avg_tdr_team +
+                   avg_rbra_plyr + avg_rbra_pos +avg_rbra_team +
+                   avg_rbry_plyr + avg_rbry_pos +avg_rbry_team +
+                   avg_fuml_plyr + avg_fuml_pos +avg_fuml_team +
+                   avg_qbpy_plyr + avg_qbpy_pos +avg_qbpy_team +
+                   avg_qbpa_plyr + avg_qbpa_pos +avg_qbpa_team+
+                   avg_qbpc_plyr + avg_qbpc_pos +avg_qbpc_team +
+                   avg_qbints_plyr + avg_qbints_pos +avg_qbints_team +
+                   avg_qbtdp_plyr + avg_qbtdp_pos +avg_qbtdp_team +
+                   grass_1 + bad_weather_1, data = nfl_data)
+
+summary(linRegrecy)
+```
+
+**Second run at Receiving Yards
+```{r}
+linRegrecy2 <- lm(recy ~ ATL + BAL + BUF + CHI+
+                    CIN + CLE + GB + HOU  + JAC + KC + NE + NOR + NYG+
+                    OAK + SD + TB + TEN + WAS+ avg_recy_plyr+grass_1+bad_weather_1, data = nfl_data)
+
+summary(linRegrecy2)
+
+```
+Modest gains in r-square and residual standard error.
+
+**Receptions
+```{r}
+linRegrec <- lm(rec ~ height+ weight+cold_weather + hot_weather + home_team_1+ temp+ forty1 + vertical1 + shuttle1+ cone1 + ARI + ATL + BAL + BUF + CAR + CHI+
+                   CIN + CLE + DAL + DEN + DET + GB + HOU + IND + JAC + KC + MIA + MINN + NE + NOR + NYG+
+                   NYJ + OAK + PHI + PIT +SD + SEA + STL + TB + TEN + WAS + avg_recy_plyr+avg_recy_pos + 
+                  avg_recy_team + avg_rec_plyr +avg_rec_pos + avg_rec_team +avg_trg_plyr + avg_trg_pos +
+                  avg_trg_team + avg_rectd_plyr + avg_rectd_pos +avg_rectd_team+
+                  avg_tdr_plyr + avg_tdr_pos + avg_tdr_team +
+                  avg_rbra_plyr + avg_rbra_pos +avg_rbra_team +
+                  avg_rbry_plyr + avg_rbry_pos +avg_rbry_team +
+                  avg_fuml_plyr + avg_fuml_pos +avg_fuml_team +
+                  avg_qbpy_plyr + avg_qbpy_pos +avg_qbpy_team +
+                  avg_qbpa_plyr + avg_qbpa_pos +avg_qbpa_team+
+                  avg_qbpc_plyr + avg_qbpc_pos +avg_qbpc_team +
+                  avg_qbints_plyr + avg_qbints_pos +avg_qbints_team +
+                  avg_qbtdp_plyr + avg_qbtdp_pos +avg_qbtdp_team + grass_1 + bad_weather_1, data = nfl_data)
+
+summary(linRegrec)
+
+
+```
+**Second run at Receptions
+```{r}
+linRegrec2 <- lm(rec ~ temp+ ATL + BAL + BUF + CHI+
+                   CIN + CLE + GB + HOU + JAC + KC + NOR + NYG+
+                   OAK +SD + WAS + avg_rec_plyr+ grass_1+
+                   bad_weather_1, data = nfl_data)
+
+summary(linRegrec2)
+```
+We had a modest r-square improvement
+
+**Targets
+```{r}
+linRegtrg <- lm(trg ~ height+ weight+cold_weather + hot_weather + home_team_1+ temp+forty1 + vertical1  + shuttle1+ cone1 + ARI + ATL + BAL + BUF + CAR + CHI+
+                  CIN + CLE + DAL + DEN + DET + GB + HOU + IND + JAC + KC + MIA + MINN + NE + NOR + NYG+
+                  NYJ + OAK + PHI + PIT +SD + SEA + STL + TB + TEN + WAS +avg_recy_plyr+avg_recy_pos + 
+                  avg_recy_team + avg_rec_plyr +avg_rec_pos + avg_rec_team +avg_trg_plyr + avg_trg_pos +
+                  avg_trg_team + avg_rectd_plyr + avg_rectd_pos +avg_rectd_team+
+                  avg_tdr_plyr + avg_tdr_pos + avg_tdr_team +
+                  avg_rbra_plyr + avg_rbra_pos +avg_rbra_team +
+                  avg_rbry_plyr + avg_rbry_pos +avg_rbry_team +
+                  avg_fuml_plyr + avg_fuml_pos +avg_fuml_team +
+                  avg_qbpy_plyr + avg_qbpy_pos +avg_qbpy_team +
+                  avg_qbpa_plyr + avg_qbpa_pos +avg_qbpa_team+
+                  avg_qbpc_plyr + avg_qbpc_pos +avg_qbpc_team +
+                  avg_qbints_plyr + avg_qbints_pos +avg_qbints_team +
+                  avg_qbtdp_plyr + avg_qbtdp_pos +avg_qbtdp_team + grass_1 + bad_weather_1 , data = nfl_data)
+
+summary(linRegtrg)
+```
+
+** Second run at targets
+```{r}
+linRegtrg2 <- lm(trg ~ home_team_1+ ARI + ATL + BAL + BUF + CAR + CHI + CIN + CLE + 
+                   DAL + DEN + DET + GB + HOU + IND + JAC + KC + MIA + MINN + NE + NOR + NYG+
+                   NYJ + OAK + SD + STL + TB + TEN + WAS + avg_trg_plyr,
+                 data = nfl_data)
+
+summary(linRegtrg2)
+```
+Modest gains in second run
+
+**Receiving TD's
+```{r}
+linRegRecTD <- lm(trg ~ height+ weight+cold_weather + hot_weather + home_team_1+ temp+ forty1 + vertical1  + shuttle1+ cone1 + ARI + ATL + BAL + BUF + CAR + CHI+
+                  CIN + CLE + DAL + DEN + DET + GB + HOU + IND + JAC + KC + MIA + MINN + NE + NOR + NYG+
+                  NYJ + OAK + PHI + PIT +SD + SEA + STL + TB + TEN + WAS +avg_recy_plyr+avg_recy_pos + 
+                  avg_recy_team + avg_rec_plyr +avg_rec_pos + avg_rec_team +avg_trg_plyr + avg_trg_pos +
+                  avg_trg_team + avg_rectd_plyr + avg_rectd_pos +avg_rectd_team+
+                  avg_tdr_plyr + avg_tdr_pos + avg_tdr_team +
+                  avg_rbra_plyr + avg_rbra_pos +avg_rbra_team +
+                  avg_rbry_plyr + avg_rbry_pos +avg_rbry_team +
+                  avg_fuml_plyr + avg_fuml_pos +avg_fuml_team +
+                  avg_qbpy_plyr + avg_qbpy_pos +avg_qbpy_team +
+                  avg_qbpa_plyr + avg_qbpa_pos +avg_qbpa_team+
+                  avg_qbpc_plyr + avg_qbpc_pos +avg_qbpc_team +
+                  avg_qbints_plyr + avg_qbints_pos +avg_qbints_team +
+                  avg_qbtdp_plyr + avg_qbtdp_pos +avg_qbtdp_team + grass_1 + bad_weather_1 , data = nfl_data)
+
+summary(linRegRecTD)
+```
+
+**Second Run
+```{r}
+linRegRecTD2 <- lm(tdrec ~weight+home_team_1+ ATL+ DAL + DEN + GB + NE + NOR + NYG+
+                  SD + avg_recy_plyr+ avg_rec_plyr, data = nfl_data)
+
+summary(linRegRecTD2)
+```
+
+
+So, this goes on and on for each type of stat.  I have the code saved, I feel this is getting a litte redundant.
+
+###Charts
+WR targets by avg yards per player
+```{r}
+ggplot(data = nfl_data, aes(x = avg_recy_plyr, y = avg_trg_plyr, col = Teams ))+
+  geom_point()+
+  geom_text(data = subset(nfl_data, avg_recy_plyr > 75), aes(label = pname), size = 2.5)
+```
+There are few anomalies in this graph, not surprising, the amount of targets correlates with the amount of yards a player gets.  The top right corner is "ALL PRO" corner.
+
+**Tight ends should not be compared to WR
+```{r}
+ggplot(data = nfl_data, aes(x = avg_recy_plyr, y = avg_trg_plyr, col = Teams ))+
+  geom_point(data = subset(nfl_data, pos1 == "TE"))+
+  geom_text(data = subset(nfl_data, avg_recy_plyr > 50 & pos1 == "TE"), aes(label = pname), size = 2.5)
+```
+I separated out the TE from the WR.  TE are not "homerun" hitters, but are frequent targets of QB's. Rob Gronkowski is the biggest anomaly here, he is widely considered the best position player to ever play.
+
+** RB's separated out
+```{r}
+ggplot(data = nfl_data, aes(x = avg_recy_plyr, y = avg_trg_plyr, col = Teams ))+
+  geom_point(data = subset(nfl_data, pos1 == "RB"))+
+  geom_text(data = subset(nfl_data, avg_recy_plyr > 30 & pos1 == "RB"), aes(label = pname), size = 2.5)
+```
+CJ prosise was a rookie who had a couple of explosive games.  He is a RB who played WR in college.  He switched to RB his senior year of college and became an elite RB.  This trend will regress somewhat, however, he is a very legit dual threat.
+
+**WR only
+```{r}
+ggplot(data = nfl_data, aes(x = avg_recy_plyr, y = avg_trg_plyr, col = Teams ))+
+  geom_point(data = subset(nfl_data, pos1 == "WR"))+
+  geom_text(data = subset(nfl_data, avg_recy_plyr > 70 & pos1 == "WR"), aes(label = pname), size = 2.5)
+```
+
+
