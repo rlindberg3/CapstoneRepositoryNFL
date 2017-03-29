@@ -2,6 +2,9 @@
 library(dplyr)
 library(tidyr)
 library(ggplot2)
+library(reshape2)
+library(caTools)
+
 
 nfl_data <- read.csv("NFL_offense.csv")
 
@@ -259,8 +262,40 @@ nfl_data <- nfl_data %>%
 nfl_data <- nfl_data %>%
   group_by(age, pos1)%>%
   mutate(age_count = n())
-                  
+
+
+nfl_data_fields<- subset(nfl_data, select = c("height", "weight", "cold_weather", "hot_weather",
+                         "home_team_1", "temp", "is_WR", "is_QB", "is_RB", "is_TE", "age",
+                         "forty1", "vertical1", "ARI", "ATL", "BAL", "BUF",
+                         "CAR", "CHI", "CIN", "CLE", "DAL", "DEN", "DET", "GB", "HOU", "IND",
+                         "JAC", "KC", "MIA", "MINN", "NE", "NOR", "NYG", "NYJ", "OAK", "PHI", "PIT",
+                         "SD", "SEA", "STL", "TB", "TEN", "WAS",
+                         "avg_recy_plyr","avg_recy_pos","avg_recy_team","avg_rec_plyr","avg_rec_pos",
+                         "avg_rec_team", "avg_trg_plyr","avg_trg_pos","avg_trg_team","avg_rectd_plyr",
+                         "avg_rectd_pos","avg_rectd_team","avg_tdr_plyr","avg_tdr_pos","avg_tdr_team",
+                         "avg_rbra_plyr","avg_rbra_pos", "avg_rbra_team","avg_rbry_plyr","avg_rbry_pos",
+                         "avg_rbry_team","avg_fuml_plyr","avg_fuml_pos", "avg_fuml_team","avg_qbpy_plyr",
+                         "avg_qbpy_pos", "avg_qbpy_team","avg_qbpa_plyr","avg_qbpa_pos","avg_qbpa_team",
+                         "avg_qbpc_plyr","avg_qbpc_pos", "avg_qbpc_team","avg_qbints_plyr", "avg_qbints_pos",
+                         "avg_qbints_team","avg_qbtdp_plyr","avg_qbtdp_pos","avg_qbtdp_team","grass_1",
+                         "bad_weather_1"))
+
+cor_nfl <- cor(nfl_data_fields)
+
+image(cor_nfl)
+qplot(x=Var1, y=Var2, data=melt(cor(nfl_data_fields)), fill=value, geom="tile")+
+  scale_fill_gradient2(limits=c(-1, 1))+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 5),
+        axis.text.y = element_text(size = 5))
+
+pairs(nfl_data_fields)
+
 #wr regression
+
+set.seed(123)
+split <- sample.split(nfl_data$recy, SplitRatio = 0.7)
+TrainRecy <- subset(nfl_data, split == TRUE)
+TestRecy <- subset(nfl_data, split == FALSE)
 
 linRegrecy <- lm(recy ~ height+ weight + cold_weather + hot_weather + home_team_1+ temp+ is_WR + is_TE + is_RB + is_QB+
                    age+ forty1 + vertical1  + shuttle1+ cone1 + ARI + ATL + BAL + BUF + CAR + CHI+
@@ -277,18 +312,33 @@ linRegrecy <- lm(recy ~ height+ weight + cold_weather + hot_weather + home_team_
                    avg_qbpc_plyr + avg_qbpc_pos +avg_qbpc_team +
                    avg_qbints_plyr + avg_qbints_pos +avg_qbints_team +
                    avg_qbtdp_plyr + avg_qbtdp_pos +avg_qbtdp_team +
-                   grass_1 + bad_weather_1, data = nfl_data)
+                   grass_1 + bad_weather_1, data = TrainRecy)
 summary(linRegrecy)
 
-linRegrecy2 <- lm(recy ~ age + ATL + BAL + BUF + CHI+
-                    CIN + CLE + GB + HOU  + JAC + KC + NE + NOR + NYG+
-                    OAK + SD + TB + TEN + WAS+ avg_recy_plyr+grass_1+bad_weather_1, data = nfl_data)
+linRegrecy2 <- lm(recy ~ avg_recy_plyr+grass_1+bad_weather_1, data = TrainRecy)
 
 summary(linRegrecy2)
 
+RecyPredicted <- predict(linRegrecy2, newdata = TestRecy)
+
+SSErecy <- sum((RecyPredicted - TestRecy$recy)^2)
+SSTrecy <- sum((mean(nfl_data$recy)-TestRecy$recy)^2)
+r2_recy <- 1 - SSErecy/SSTrecy 
+r2_recy
+rmse_recy <- sqrt(SSErecy/nrow(TestRecy))
+rmse_recy
 
 
+par(mar = c(4, 4, 2, 2), mfrow = c(3, 2))
+plot(linRegrecy2, which = 1:6)
 
+confint(linRegrecy2)
+
+coef(summary(linRegrecy2))
+
+anova(linRegrecy2)
+
+######################################################
 
 linRegrec <- lm(rec ~ height+ weight+cold_weather + hot_weather + home_team_1+ temp+ is_WR + is_TE + is_RB + is_QB+
                    age+ forty1 + vertical1 + shuttle1+ cone1 + ARI + ATL + BAL + BUF + CAR + CHI+
@@ -304,16 +354,36 @@ linRegrec <- lm(rec ~ height+ weight+cold_weather + hot_weather + home_team_1+ t
                   avg_qbpa_plyr + avg_qbpa_pos +avg_qbpa_team+
                   avg_qbpc_plyr + avg_qbpc_pos +avg_qbpc_team +
                   avg_qbints_plyr + avg_qbints_pos +avg_qbints_team +
-                  avg_qbtdp_plyr + avg_qbtdp_pos +avg_qbtdp_team + grass_1 + bad_weather_1, data = nfl_data)
+                  avg_qbtdp_plyr + avg_qbtdp_pos +avg_qbtdp_team + grass_1 + bad_weather_1, data = TrainRecy)
 
 summary(linRegrec)
   
-linRegrec2 <- lm(rec ~ temp+ ATL + BAL + BUF + CHI+
-                   CIN + CLE + GB + HOU + JAC + KC + NOR + NYG+
-                   OAK +SD + WAS + avg_rec_plyr+ grass_1+
-                   bad_weather_1, data = nfl_data)
+linRegrec2 <- lm(rec ~ temp + BAL + CHI+
+                   CLE +
+                   avg_rec_plyr+ grass_1+
+                   bad_weather_1, data = TrainRecy)
 
 summary(linRegrec2)
+
+RecPredicted <- predict(linRegrec2, newdata = TestRecy)
+
+SSErec <- sum((RecPredicted - TestRecy$rec)^2)
+SSTrec <- sum((mean(nfl_data$rec)-TestRecy$rec)^2)
+r2_rec <- 1 - SSErec/SSTrec 
+r2_rec
+rmse_rec <- sqrt(SSErec/nrow(TestRecy))
+rmse_rec
+
+par(mar = c(4, 4, 2, 2), mfrow = c(3, 2))
+plot(linRegrec2, which = 1:6)
+
+confint(linRegrec2)
+
+coef(summary(linRegrec2))
+
+anova(linRegrec2)
+
+############################################################
 
 linRegtrg <- lm(trg ~ height+ weight+cold_weather + hot_weather + home_team_1+ temp+ is_WR + is_TE + is_RB + is_QB+
                   age+ forty1 + vertical1  + shuttle1+ cone1 + ARI + ATL + BAL + BUF + CAR + CHI+
@@ -329,18 +399,39 @@ linRegtrg <- lm(trg ~ height+ weight+cold_weather + hot_weather + home_team_1+ t
                   avg_qbpa_plyr + avg_qbpa_pos +avg_qbpa_team+
                   avg_qbpc_plyr + avg_qbpc_pos +avg_qbpc_team +
                   avg_qbints_plyr + avg_qbints_pos +avg_qbints_team +
-                  avg_qbtdp_plyr + avg_qbtdp_pos +avg_qbtdp_team + grass_1 + bad_weather_1 , data = nfl_data)
+                  avg_qbtdp_plyr + avg_qbtdp_pos +avg_qbtdp_team + grass_1 + bad_weather_1 , data = TrainRecy)
 
 summary(linRegtrg)
 
-linRegtrg2 <- lm(trg ~ home_team_1+ ARI + ATL + BAL + BUF + CAR + CHI + CIN + CLE + 
-                   DAL + DEN + DET + GB + HOU + IND + JAC + KC + MIA + MINN + NE + NOR + NYG+
-                   NYJ + OAK + SD + STL + TB + TEN + WAS + avg_trg_plyr,
-                 data = nfl_data)
+linRegtrg2 <- lm(trg ~ home_team_1 + BAL + BUF + CHI + CIN + CLE + 
+                   HOU + JAC + NOR + NYG+
+                   OAK + STL + TB + avg_trg_plyr,
+                 data = TrainRecy)
 
 summary(linRegtrg2)
 
-linRegRecTD <- lm(trg ~ height+ weight+cold_weather + hot_weather + home_team_1+ temp+ is_WR + is_TE + is_RB + is_QB+
+TrgPredicted <- predict(linRegtrg2, newdata = TestRecy)
+
+SSEtrg <- sum((TrgPredicted - TestRecy$trg)^2)
+SSTtrg <- sum((mean(nfl_data$trg)-TestRecy$trg)^2)
+r2_trg <- 1 - SSEtrg/SSTtrg 
+r2_trg
+rmse_trg <- sqrt(SSEtrg/nrow(TestRecy))
+rmse_trg
+
+par(mar = c(4, 4, 2, 2), mfrow = c(3, 2))
+plot(linRegrec2, which = 1:6)
+
+confint(linRegtrg2)
+
+coef(summary(linRegtrg2))
+
+anova(linRegtrg2)
+
+
+#################################################
+
+linRegRecTD <- lm(tdrec ~ height+ weight+cold_weather + hot_weather + home_team_1+ temp+ is_WR + is_TE + is_RB + is_QB+
                   age+ forty1 + vertical1  + shuttle1+ cone1 + ARI + ATL + BAL + BUF + CAR + CHI+
                   CIN + CLE + DAL + DEN + DET + GB + HOU + IND + JAC + KC + MIA + MINN + NE + NOR + NYG+
                   NYJ + OAK + PHI + PIT +SD + SEA + STL + TB + TEN + WAS +avg_recy_plyr+avg_recy_pos + 
@@ -354,16 +445,38 @@ linRegRecTD <- lm(trg ~ height+ weight+cold_weather + hot_weather + home_team_1+
                   avg_qbpa_plyr + avg_qbpa_pos +avg_qbpa_team+
                   avg_qbpc_plyr + avg_qbpc_pos +avg_qbpc_team +
                   avg_qbints_plyr + avg_qbints_pos +avg_qbints_team +
-                  avg_qbtdp_plyr + avg_qbtdp_pos +avg_qbtdp_team + grass_1 + bad_weather_1 , data = nfl_data)
+                  avg_qbtdp_plyr + avg_qbtdp_pos +avg_qbtdp_team + grass_1 + bad_weather_1 , data = TrainRecy)
 
 summary(linRegRecTD)
 
 
-linRegRecTD2 <- lm(tdrec ~weight+home_team_1+ ATL+ DAL + DEN + GB + NE + NOR + NYG+
-                  SD + avg_recy_plyr+ avg_rec_plyr, data = nfl_data)
+linRegRecTD2 <- lm(tdrec ~weight+home_team_1+ ATL+ DAL + DEN + GB + NE + NOR +
+                  avg_recy_plyr+ avg_rec_plyr, data = TrainRecy)
 
 summary(linRegRecTD2)
 
+RectdPredicted <- predict(linRegRecTD2, newdata = TestRecy)
+
+SSErectd <- sum((RectdPredicted - TestRecy$tdrec)^2)
+SSTrectd <- sum((mean(nfl_data$tdrec)-TestRecy$tdrec)^2)
+r2_rectd <- 1 - SSErectd/SSTrectd 
+r2_rectd
+rmse_rectd <- sqrt(SSEtrg/nrow(TestRecy))
+rmse_rectd
+
+par(mar = c(4, 4, 2, 2), mfrow = c(3, 2))
+plot(linRegRecTD2, which = 1:6)
+
+confint(linRegRecTD2)
+
+coef(summary(linRegRecTD2))
+
+anova(linRegRecTD2)
+
+
+
+
+#############################################################
 
 linRegQBpyds <- lm(py ~ height+ weight+cold_weather + hot_weather + home_team_1+ temp+ is_WR + is_TE + is_RB + is_QB+
                   age+ forty1 + vertical1 + shuttle1+ cone1 + ARI + ATL + BAL + BUF + CAR + CHI+
@@ -380,14 +493,36 @@ linRegQBpyds <- lm(py ~ height+ weight+cold_weather + hot_weather + home_team_1+
                     avg_qbpc_plyr + avg_qbpc_pos +avg_qbpc_team +
                     avg_qbints_plyr + avg_qbints_pos +avg_qbints_team +
                     avg_qbtdp_plyr + avg_qbtdp_pos +avg_qbtdp_team + grass_1 +
-                  bad_weather_1, data = nfl_data)
+                  bad_weather_1, data = TrainRecy)
 
 summary(linRegQBpyds)
 
-linRegQBpyds2 <- lm(py ~ cold_weather + BUF + CLE+ HOU + OAK + PHI+ avg_qbpy_plyr+ grass_1 + 
-                     bad_weather_1, data = nfl_data)
+linRegQBpyds2 <- lm(py ~ cold_weather + BUF + CLE+ HOU + PHI+ avg_qbpy_plyr+ 
+                     bad_weather_1, data = TrainRecy)
 
 summary(linRegQBpyds2)
+
+PydsdPredicted <- predict(linRegQBpyds2, newdata = TestRecy)
+
+SSEpyds <- sum((PydsdPredicted - TestRecy$py)^2)
+SSTpyds <- sum((mean(nfl_data$py)-TestRecy$py)^2)
+r2_pyds <- 1 - SSEpyds/SSTpyds 
+r2_pyds
+rmse_pyds <- sqrt(SSEpyds/nrow(TestRecy))
+rmse_pyds
+
+par(mar = c(4, 4, 2, 2), mfrow = c(3, 2))
+plot(linRegQBpyds2, which = 1:6)
+
+confint(linRegQBpyds2)
+
+coef(summary(linRegQBpyds2))
+
+anova(linRegQBpyds2)
+
+
+
+######################################################################
 
 linRegQBpc <- lm(pc ~ height+ weight+cold_weather + hot_weather + home_team_1+ temp+ is_WR + is_TE + is_RB + is_QB+
                    age+ forty1 + vertical1 + shuttle1+ cone1 + ARI + ATL + BAL + BUF + CAR + CHI+
@@ -404,18 +539,39 @@ linRegQBpc <- lm(pc ~ height+ weight+cold_weather + hot_weather + home_team_1+ t
                    avg_qbpc_plyr + avg_qbpc_pos +avg_qbpc_team +
                    avg_qbints_plyr + avg_qbints_pos +avg_qbints_team +
                    avg_qbtdp_plyr + avg_qbtdp_pos +avg_qbtdp_team + grass_1 +
-                   bad_weather_1 , data = nfl_data)
+                   bad_weather_1 , data = TrainRecy)
 summary(linRegQBpc)
 
-linRegQBpc2 <- lm(pc ~ cold_weather + BUF + CLE+ HOU + KC+ OAK + PHI+ avg_qbpc_plyr+ grass_1 + 
-                    bad_weather_1, data = nfl_data)
+linRegQBpc2 <- lm(pc ~ cold_weather + BUF + CLE+ HOU + KC+ PHI+ avg_qbpc_plyr+  
+                    bad_weather_1, data = TrainRecy)
 
 summary(linRegQBpc2)
 
+PcPredicted <- predict(linRegQBpc2, newdata = TestRecy)
+
+SSEpc <- sum((PcPredicted - TestRecy$pc)^2)
+SSTpc <- sum((mean(nfl_data$py)-TestRecy$py)^2)
+r2_pc <- 1 - SSEpc/SSTpc 
+r2_pc
+rmse_pc <- sqrt(SSEpc/nrow(TestRecy))
+rmse_pc
+
+par(mar = c(4, 4, 2, 2), mfrow = c(3, 2))
+plot(linRegQBpc2, which = 1:6)
+
+confint(linRegQBpc2)
+
+coef(summary(linRegQBpc2))
+
+anova(linRegQBpc2)
+
+
+##########################################################
+
 linRegQBInts <- lm(ints ~ height+ weight+cold_weather + hot_weather + home_team_1+ temp+ is_WR + is_TE + is_RB + is_QB+
-                   age+ forty1 + vertical1 + shuttle1+ cone1 + ARI + ATL + BAL + BUF + CAR + CHI+
-                   CIN + CLE + DAL + DEN + DET + GB + HOU + IND + JAC + KC + MIA + MINN + NE + NOR + NYG+
-                   NYJ + OAK + PHI + PIT +SD + SEA + STL + TB + TEN + WAS avg_recy_plyr+avg_recy_pos + 
+                     age+ forty1 + vertical1 + shuttle1+ cone1 + ARI + ATL + BAL + BUF + CAR + CHI+
+                     CIN + CLE + DAL + DEN + DET + GB + HOU + IND + JAC + KC + MIA + MINN + NE + NOR + NYG+
+                     NYJ + OAK + PHI + PIT +SD + SEA + STL + TB + TEN + WAS +avg_recy_plyr+avg_recy_pos + 
                      avg_recy_team + avg_rec_plyr +avg_rec_pos + avg_rec_team +avg_trg_plyr + avg_trg_pos +
                      avg_trg_team + avg_rectd_plyr + avg_rectd_pos +avg_rectd_team+
                      avg_tdr_plyr + avg_tdr_pos + avg_tdr_team +
@@ -427,13 +583,34 @@ linRegQBInts <- lm(ints ~ height+ weight+cold_weather + hot_weather + home_team_
                      avg_qbpc_plyr + avg_qbpc_pos +avg_qbpc_team +
                      avg_qbints_plyr + avg_qbints_pos +avg_qbints_team +
                      avg_qbtdp_plyr + avg_qbtdp_pos +avg_qbtdp_team + grass_1 +
-                   bad_weather_1, data = nfl_data)
-
+                     bad_weather_1 , data = TrainRecy)
 summary(linRegQBInts) 
 
-linRegQBInts2 <- lm(ints ~ avg_qbints_plyr, data = nfl_data)
+linRegQBInts2 <- lm(ints ~ cold_weather + temp + age + avg_qbints_plyr, data = TrainRecy)
 
 summary(linRegQBInts2)
+
+PintPredicted <- predict(linRegQBInts2, newdata = TestRecy)
+
+SSEint <- sum((PintPredicted - TestRecy$ints)^2)
+SSTint <- sum((mean(nfl_data$ints)-TestRecy$ints)^2)
+r2_int <- 1 - SSEint/SSTint 
+r2_int
+rmse_int <- sqrt(SSEint/nrow(TestRecy))
+rmse_int
+
+par(mar = c(4, 4, 2, 2), mfrow = c(3, 2))
+plot(linRegQBInts2, which = 1:6)
+
+confint(linRegQBInts2)
+
+coef(summary(linRegQBInts2))
+
+anova(linRegQBInts2)
+
+
+
+####################################################################
 
 linRegQBpa <- lm(pa ~ height+ weight+cold_weather + hot_weather + home_team_1+ temp+ is_WR + is_TE + is_RB + is_QB+
                      age+ forty1 + vertical1 + shuttle1+ cone1 + ARI + ATL + BAL + BUF + CAR + CHI+
@@ -459,6 +636,26 @@ linRegQBpa2 <- lm(pa~ + cold_weather+ home_team_1+ age+ BUF + CLE+ DAL+ HOU + OA
 
 summary(linRegQBpa2)
 
+PaPredicted <- predict(linRegQBpa2, newdata = TestRecy)
+
+SSEpa <- sum((PaPredicted - TestRecy$pa)^2)
+SSTpa <- sum((mean(nfl_data$pa)-TestRecy$pa)^2)
+r2_pa <- 1 - SSEpa/SSTpa 
+r2_pa
+rmse_pa <- sqrt(SSEpa/nrow(TestRecy))
+rmse_pa
+
+par(mar = c(4, 4, 2, 2), mfrow = c(3, 2))
+plot(linRegQBpa2, which = 1:6)
+
+confint(linRegQBpa2)
+
+coef(summary(linRegQBpa2))
+
+anova(linRegQBpa2)
+
+
+#################################################################
 
 linRegRushYd <- lm(ry ~ height+ weight+cold_weather + hot_weather + home_team_1+ temp+ is_WR + is_TE + is_RB + is_QB+
                    age+ forty1 + vertical1 + shuttle1+ cone1 + ARI + ATL + BAL + BUF + CAR + CHI+
@@ -483,6 +680,44 @@ linRegRushYd2 <- lm(ry ~ home_team_1 + age +avg_rbry_plyr, data = nfl_data)
 
 summary(linRegRushYd2)
 
+linRegRushYdXavg <- lm(ry ~ height+ weight+cold_weather + hot_weather + home_team_1+ temp+ is_WR + is_TE + is_RB + is_QB+
+                     age+ forty1 + vertical1 + shuttle1+ cone1 + ARI + ATL + BAL + BUF + CAR + CHI+
+                     CIN + CLE + DAL + DEN + DET + GB + HOU + IND + JAC + KC + MIA + MINN + NE + NOR + NYG+
+                     NYJ + OAK + PHI + PIT +SD + SEA + STL + TB + TEN + WAS +
+                     grass_1 + bad_weather_1 , data = nfl_data)
+
+summary(linRegRushYdXavg)
+
+linRegRushYdXavg2 <- lm(ry ~ height+ weight+ home_team_1+ is_WR + is_TE + is_RB + is_QB+
+                         age+ forty1 + vertical1 + shuttle1+ cone1 + ARI + ATL + BAL +
+                         DET + IND + JAC + KC + MIA + NOR + NYG+
+                         OAK + PIT +SD + SEA + STL + TB + TEN + WAS, data = nfl_data)
+
+summary(linRegRushYdXavg2)
+
+RushydsPredicted <- predict(linRegRushYd2, newdata = TestRecy)
+
+SSEruyd <- sum((RushydsPredicted - TestRecy$ry)^2)
+SSTruyd <- sum((mean(nfl_data$ry)-TestRecy$ry)^2)
+r2_ruyd <- 1 - SSEruyd/SSTruyd 
+r2_ruyd
+rmse_ruyd <- sqrt(SSEruyd/nrow(TestRecy))
+rmse_ruyd
+
+par(mar = c(4, 4, 2, 2), mfrow = c(3, 2))
+plot(linRegRushYd2, which = 1:6)
+
+confint(linRegRushYd2)
+
+coef(summary(linRegRushYd2))
+
+anova(linRegRushYd2)
+
+
+
+
+#############################################################################
+
 linRegRushAtt <- lm(ra ~ height+ weight+cold_weather + hot_weather + home_team_1+ temp+ is_WR + is_TE + is_RB + is_QB+
                      age+ forty1 + vertical1 + shuttle1+ cone1 + ARI + ATL + BAL + BUF + CAR + CHI+
                      CIN + CLE + DAL + DEN + DET + GB + HOU + IND + JAC + KC + MIA + MINN + NE + NOR + NYG+
@@ -506,25 +741,70 @@ linRegRushAtt2 <- lm(ry ~ home_team_1 + age +avg_rbra_plyr, data = nfl_data)
 
 summary(linRegRushAtt2)
 
+RushattPredicted <- predict(linRegRushAtt2, newdata = TestRecy)
+
+SSEruatt <- sum((RushattPredicted - TestRecy$ra)^2)
+SSTruatt <- sum((mean(nfl_data$ra)-TestRecy$ra)^2)
+r2_ruatt <- 1 - SSEruatt/SSTruatt 
+r2_ruatt
+rmse_ruatt <- sqrt(SSEruatt/nrow(TestRecy))
+rmse_ruatt
+
+par(mar = c(4, 4, 2, 2), mfrow = c(3, 2))
+plot(linRegRushAtt2, which = 1:6)
+
+confint(linRegRushAtt2)
+
+coef(summary(linRegRushAtt2))
+
+anova(linRegRushAtt2)
+
+
+############################################################
 
 linRegFumble <- lm(fuml ~ height+ weight+cold_weather + hot_weather + home_team_1+ temp+ is_WR + is_TE + is_RB + is_QB+
-                      age+ forty1 + vertical1 + shuttle1+ cone1 + ARI + ATL + BAL + BUF + CAR + CHI+
-                      CIN + CLE + DAL + DEN + DET + GB + HOU + IND + JAC + KC + MIA + MINN + NE + NOR + NYG+
-                      NYJ + OAK + PHI + PIT +SD + SEA + STL + TB + TEN + WAS + avg_recy_plyr+avg_recy_pos + 
-                      avg_recy_team + avg_rec_plyr +avg_rec_pos + avg_rec_team +avg_trg_plyr + avg_trg_pos +
-                      avg_trg_team + avg_rectd_plyr + avg_rectd_pos +avg_rectd_team+
-                      avg_tdr_plyr + avg_tdr_pos + avg_tdr_team +
-                      avg_rbra_plyr + avg_rbra_pos +avg_rbra_team +
-                      avg_rbry_plyr + avg_rbry_pos +avg_rbry_team +
-                      avg_fuml_plyr + avg_fuml_pos +avg_fuml_team +
-                      avg_qbpy_plyr + avg_qbpy_pos +avg_qbpy_team +
-                      avg_qbpa_plyr + avg_qbpa_pos +avg_qbpa_team+
-                      avg_qbpc_plyr + avg_qbpc_pos +avg_qbpc_team +
-                      avg_qbints_plyr + avg_qbints_pos +avg_qbints_team +
-                      avg_qbtdp_plyr + avg_qbtdp_pos +avg_qbtdp_team +
-                      grass_1 + bad_weather_1 , data = nfl_data)
+                     age+ forty1 + vertical1 + shuttle1+ cone1 + ARI + ATL + BAL + BUF + CAR + CHI+
+                     CIN + CLE + DAL + DEN + DET + GB + HOU + IND + JAC + KC + MIA + MINN + NE + NOR + NYG+
+                     NYJ + OAK + PHI + PIT +SD + SEA + STL + TB + TEN + WAS + avg_recy_plyr+avg_recy_pos + 
+                     avg_recy_team + avg_rec_plyr +avg_rec_pos + avg_rec_team +avg_trg_plyr + avg_trg_pos +
+                     avg_trg_team + avg_rectd_plyr + avg_rectd_pos +avg_rectd_team+
+                     avg_tdr_plyr + avg_tdr_pos + avg_tdr_team +
+                     avg_rbra_plyr + avg_rbra_pos +avg_rbra_team +
+                     avg_rbry_plyr + avg_rbry_pos +avg_rbry_team +
+                     avg_fuml_plyr + avg_fuml_pos +avg_fuml_team +
+                     avg_qbpy_plyr + avg_qbpy_pos +avg_qbpy_team +
+                     avg_qbpa_plyr + avg_qbpa_pos +avg_qbpa_team+
+                     avg_qbpc_plyr + avg_qbpc_pos +avg_qbpc_team +
+                     avg_qbints_plyr + avg_qbints_pos +avg_qbints_team +
+                     avg_qbtdp_plyr + avg_qbtdp_pos +avg_qbtdp_team +
+                     grass_1 + bad_weather_1 , data = TrainRecy)
 
 summary(linRegFumble)
+
+linRegFumble2 <- lm(fuml ~ avg_fuml_plyr + grass_1, data = TrainRecy)
+
+summary(linRegFumble2)
+
+FumblePredicted <- predict(linRegFumble2, newdata = TestRecy)
+
+SSEfum <- sum((FumblePredicted - TestRecy$fuml)^2)
+SSTfum <- sum((mean(nfl_data$fuml)-TestRecy$fuml)^2)
+r2_fum <- 1 - SSEfum/SSTfum 
+r2_fum
+rmse_fum <- sqrt(SSEfum/nrow(TestRecy))
+rmse_fum
+
+par(mar = c(4, 4, 2, 2), mfrow = c(3, 2))
+plot(linFumble2, which = 1:6)
+
+confint(linRegFumble2)
+
+coef(summary(linRegFumble2))
+
+anova(linRegFumble2)
+
+
+##########################################################################
 
 ggplot(data = nfl_data, aes(x = avg_recy_plyr, y = avg_trg_plyr, col = Teams ))+
   geom_point()+
