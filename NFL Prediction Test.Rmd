@@ -1,10 +1,10 @@
 ---
-title: "Predicting NFL Statistic"
-author: "Rich L"
+title: "Predicting NFL Statistics"
+author: "Rich Lindberg"
 date: "March 27, 2017"
 output:
-  pdf_document: default
   html_document: default
+  pdf_document: default
 ---
 
 # Predicting NFL Stats
@@ -21,6 +21,8 @@ I then queried the DB to get the fields I would need.  This operation took exten
 library(dplyr)
 library(tidyr)
 library(ggplot2)
+library(reshape2)
+library(caTools)
 
 nfl_data <- read.csv("NFL_offense.csv")
 ```
@@ -82,7 +84,7 @@ nfl_data <- mutate(nfl_data, is_QB =  ifelse(pos1 == "QB", 1,0))
 
 #### Age
 Every year players get older, so we want to know "Does father time impact player performance?"
-```{r eval=FALSE}
+```{r}
 #age
 nfl_data <- mutate(nfl_data, age = year - yob)
 ```
@@ -330,13 +332,71 @@ nfl_data <- nfl_data %>%
 
 ```
 
+### Pre-Analysis exploration
 
-#### Age
-There is an age component to a graph I show later, but here is the code right here
+I wanted to learn a little about the data.  I had approximately 100 fields to choose from, so it is hard to infer if there were any correlations or other patterns off hand.  I built a subset of the fields I wanted to explore.  I named this subset: nfl_data_fields
 
+I then created a correlation matrix:
+
+```{r }
+nfl_data_fields<- subset(nfl_data, select = c("height", "weight", "cold_weather", "hot_weather",
+                         "home_team_1", "temp",
+                         "forty1", "vertical1", "ARI", "ATL", "BAL", "BUF",
+                         "CAR", "CHI", "CIN", "CLE", "DAL", "DEN", "DET", "GB", "HOU", "IND",
+                         "JAC", "KC", "MIA", "MINN", "NE", "NOR", "NYG", "NYJ", "OAK", "PHI", "PIT",
+                         "SD", "SEA", "STL", "TB", "TEN", "WAS",
+                         "avg_recy_plyr","avg_recy_pos","avg_recy_team","avg_rec_plyr","avg_rec_pos",
+                         "avg_rec_team", "avg_trg_plyr","avg_trg_pos","avg_trg_team","avg_rectd_plyr",
+                         "avg_rectd_pos","avg_rectd_team","avg_tdr_plyr","avg_tdr_pos","avg_tdr_team",
+                         "avg_rbra_plyr","avg_rbra_pos", "avg_rbra_team","avg_rbry_plyr","avg_rbry_pos",
+                         "avg_rbry_team","avg_fuml_plyr","avg_fuml_pos", "avg_fuml_team","avg_qbpy_plyr",
+                         "avg_qbpy_pos", "avg_qbpy_team","avg_qbpa_plyr","avg_qbpa_pos","avg_qbpa_team",
+                         "avg_qbpc_plyr","avg_qbpc_pos", "avg_qbpc_team","avg_qbints_plyr", "avg_qbints_pos",
+                         "avg_qbints_team","avg_qbtdp_plyr","avg_qbtdp_pos","avg_qbtdp_team","grass_1",
+                         "bad_weather_1"))
+
+
+cor_nfl <- cor(nfl_data_fields)
+```
+
+If you were to run cor_nfl, the print out is extremely difficult to read and gets cut off because of it's size.
+
+I decided a simpler view should be created, so I created an image of the matrix
+
+```{r}
+image(cor_nfl)
+```
+
+This gives a pretty interesting view of the data, but is still hard to interpret.  That being said, it was on the right path.
+
+I then used qplot to get a better view of the data.  With qplot I can control the colors, and since correlation matrices range from -1 to 1, setting the bookends of the color spectrum based on the values of the correlation would give me a very indicative heatmap
+
+```{r}
+qplot(x=Var1, y=Var2, data=melt(cor(nfl_data_fields)), fill=value, geom="tile")+
+  scale_fill_gradient2(limits=c(-1, 1))+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 5),
+        axis.text.y = element_text(size = 5))
+```
+
+There are strong relationships where we calculated general averages for the position, teams and players.  That is not surprising since a stat like rushing will have strong relationships with how many attempts you make at rushing the ball.  Typically, if you are running the ball more, you should see more yards.  Obvious, but this confirms the correlation.
 
 ## Receiving Regressions
-**Receiving Yards first run
+
+
+
+We have to set up our test and training data:
+```{r}
+set.seed(123)
+split <- sample.split(nfl_data$recy, SplitRatio = 0.7)
+TrainRecy <- subset(nfl_data, split == TRUE)
+TestRecy <- subset(nfl_data, split == FALSE)
+
+
+```
+
+Now that we are ready to train and test the data, let's do it!
+
+###Receiving Yards first run
 ```{r}
 linRegrecy <- lm(recy ~ height+ weight + cold_weather + hot_weather + home_team_1+ temp+ forty1 + vertical1  + shuttle1+ cone1 + ARI + ATL + BAL + BUF + CAR + CHI+CIN + CLE + DAL + DEN + DET + GB + HOU + IND + JAC + KC + MIA + MINN + NE + NOR + NYG+
                    NYJ + OAK + PHI + PIT +SD + SEA + STL + TB + TEN + WAS + avg_recy_plyr+avg_recy_pos + 
@@ -356,18 +416,48 @@ linRegrecy <- lm(recy ~ height+ weight + cold_weather + hot_weather + home_team_
 summary(linRegrecy)
 ```
 
-**Second run at Receiving Yards
+##### Second run at Receiving Yards
 ```{r}
-linRegrecy2 <- lm(recy ~ ATL + BAL + BUF + CHI+
-                    CIN + CLE + GB + HOU  + JAC + KC + NE + NOR + NYG+
-                    OAK + SD + TB + TEN + WAS+ avg_recy_plyr+grass_1+bad_weather_1, data = nfl_data)
+linRegrecy2 <- lm(recy ~ avg_recy_plyr+grass_1+bad_weather_1, data = TrainRecy)
 
 summary(linRegrecy2)
 
 ```
-Modest gains in r-square and residual standard error.
+Modest gains in r-square and residual standard error and we cut the variables down to just 3.
+R2 is not very strong 0.4277.  This is an improvement (slightly) over the historical average only as the explanatory variable.
 
-**Receptions
+Testing the data, we see that the training set and the test set are similar.  The model seems to hold up through testing
+```{r}
+RecyPredicted <- predict(linRegrecy2, newdata = TestRecy)
+
+SSErecy <- sum((RecyPredicted - TestRecy$recy)^2)
+SSTrecy <- sum((mean(nfl_data$recy)-TestRecy$recy)^2)
+r2_recy <- 1 - SSErecy/SSTrecy 
+r2_recy
+rmse_recy <- sqrt(SSErecy/nrow(TestRecy))
+rmse_recy
+```
+
+Looking at the regression plots:
+```{r}
+par(mar = c(4, 4, 2, 2), mfrow = c(2, 2))
+plot(linRegrecy2, which = c(1,2,3,5))
+
+```
+The residuals vs fitted appears to be okay for the model.
+The normal Q-Q looks okay, however, it may have some skewness to it.
+The scale-location does not seem to be ideal.  The red line is not smooth, and there appears to be a gap in the data.
+The residuals vs leverage has some values that seem extreme.
+
+The summary statistics are below.
+```{r}
+confint(linRegrecy2)
+coef(summary(linRegrecy2))
+anova(linRegrecy2)
+```
+I would say overall, the model is just okay for predicting.  The average yards receiving historical for the player is really the best predictor according to this analysis
+
+###Receptions
 ```{r}
 linRegrec <- lm(rec ~ height+ weight+cold_weather + hot_weather + home_team_1+ temp+ forty1 + vertical1 + shuttle1+ cone1 + ARI + ATL + BAL + BUF + CAR + CHI+
                    CIN + CLE + DAL + DEN + DET + GB + HOU + IND + JAC + KC + MIA + MINN + NE + NOR + NYG+
@@ -388,18 +478,50 @@ summary(linRegrec)
 
 
 ```
-**Second run at Receptions
+####Second run at Receptions
 ```{r}
-linRegrec2 <- lm(rec ~ temp+ ATL + BAL + BUF + CHI+
-                   CIN + CLE + GB + HOU + JAC + KC + NOR + NYG+
-                   OAK +SD + WAS + avg_rec_plyr+ grass_1+
-                   bad_weather_1, data = nfl_data)
+linRegrec2 <- linRegrec2 <- lm(rec ~ temp + CHI+
+                   CLE +
+                   avg_rec_plyr+ grass_1+
+                   bad_weather_1, data = TrainRecy)
 
 summary(linRegrec2)
 ```
-We had a modest r-square improvement
+We had a modest r-square improvement.  The R2 is not very strong (0.4457), and we achieved approximately the same value when we cut the variables down to just 6.  Much simpler model with similar results
 
-**Targets
+Testing the data, we see that the training set and the test set are similar.  The model seems to hold up through testing
+``` {r}
+RecPredicted <- predict(linRegrec2, newdata = TestRecy)
+
+SSErec <- sum((RecPredicted - TestRecy$rec)^2)
+SSTrec <- sum((mean(nfl_data$rec)-TestRecy$rec)^2)
+r2_rec <- 1 - SSErec/SSTrec 
+r2_rec
+rmse_rec <- sqrt(SSErec/nrow(TestRecy))
+rmse_rec
+
+```
+
+Looking at the regression plots:
+```{r}
+par(mar = c(4, 4, 2, 2), mfrow = c(2, 2))
+plot(linRegrec2, which = c(1,2,3,5))
+
+```
+The charts show very similarly to what we saw above for receiving yards.
+
+The summary statistics are below:
+```{r}
+confint(linRegrec2)
+
+coef(summary(linRegrec2))
+
+anova(linRegrec2)
+```
+Like the model above, linear regression may not be the best predictor for this statistic
+
+
+###Targets
 ```{r}
 linRegtrg <- lm(trg ~ height+ weight+cold_weather + hot_weather + home_team_1+ temp+forty1 + vertical1  + shuttle1+ cone1 + ARI + ATL + BAL + BUF + CAR + CHI+
                   CIN + CLE + DAL + DEN + DET + GB + HOU + IND + JAC + KC + MIA + MINN + NE + NOR + NYG+
@@ -419,18 +541,49 @@ linRegtrg <- lm(trg ~ height+ weight+cold_weather + hot_weather + home_team_1+ t
 summary(linRegtrg)
 ```
 
-** Second run at targets
+####Second run at targets
 ```{r}
-linRegtrg2 <- lm(trg ~ home_team_1+ ARI + ATL + BAL + BUF + CAR + CHI + CIN + CLE + 
-                   DAL + DEN + DET + GB + HOU + IND + JAC + KC + MIA + MINN + NE + NOR + NYG+
-                   NYJ + OAK + SD + STL + TB + TEN + WAS + avg_trg_plyr,
-                 data = nfl_data)
+linRegtrg2 <- lm(trg ~ home_team_1 + BAL + BUF + CHI + CIN + CLE + 
+                   HOU + JAC + NOR + NYG+
+                   OAK + STL + TB + avg_trg_plyr,
+                 data = TrainRecy)
 
 summary(linRegtrg2)
 ```
-Modest gains in second run
+Modest gains in second run's R2.  It is a much more simple model, and has a little better descriptive stats.
 
-**Receiving TD's
+Testing the data, we see that the training set and the test set are similar.  The model seems to hold up through testing
+```{r}
+TrgPredicted <- predict(linRegtrg2, newdata = TestRecy)
+
+SSEtrg <- sum((TrgPredicted - TestRecy$trg)^2)
+SSTtrg <- sum((mean(nfl_data$trg)-TestRecy$trg)^2)
+r2_trg <- 1 - SSEtrg/SSTtrg 
+r2_trg
+rmse_trg <- sqrt(SSEtrg/nrow(TestRecy))
+rmse_trg
+```
+
+The regression plots for targets are below:
+```{r}
+par(mar = c(4, 4, 2, 2), mfrow = c(2, 2))
+plot(linRegrec2, which = c(1:3,5))
+
+```
+
+Here are additional summary statistics:
+```{r}
+confint(linRegtrg2)
+
+coef(summary(linRegtrg2))
+
+anova(linRegtrg2)
+
+```
+This one was an improvement over the previous models. It still has its problems, and may need some refinement or other variables to improve the predictions.
+
+
+###Receiving TD's
 ```{r}
 linRegRecTD <- lm(trg ~ height+ weight+cold_weather + hot_weather + home_team_1+ temp+ forty1 + vertical1  + shuttle1+ cone1 + ARI + ATL + BAL + BUF + CAR + CHI+
                   CIN + CLE + DAL + DEN + DET + GB + HOU + IND + JAC + KC + MIA + MINN + NE + NOR + NYG+
@@ -450,16 +603,489 @@ linRegRecTD <- lm(trg ~ height+ weight+cold_weather + hot_weather + home_team_1+
 summary(linRegRecTD)
 ```
 
-**Second Run
+####Second Run
 ```{r}
-linRegRecTD2 <- lm(tdrec ~weight+home_team_1+ ATL+ DAL + DEN + GB + NE + NOR + NYG+
-                  SD + avg_recy_plyr+ avg_rec_plyr, data = nfl_data)
+linRegRecTD2 <- lm(tdrec ~weight+home_team_1+ ATL+ DAL + DEN + GB + NE + NOR +
+                  avg_recy_plyr+ avg_rec_plyr, data = TrainRecy)
 
 summary(linRegRecTD2)
 ```
+The R2 is worsened in the second model, and the R2 in general is fairly low.  
+
+Testing the data, we see that the training set and the test set are similar.  The model seems to hold up through testing
+```{r}
+RectdPredicted <- predict(linRegRecTD2, newdata = TestRecy)
+
+SSErectd <- sum((RectdPredicted - TestRecy$tdrec)^2)
+SSTrectd <- sum((mean(nfl_data$tdrec)-TestRecy$tdrec)^2)
+r2_rectd <- 1 - SSErectd/SSTrectd 
+r2_rectd
+rmse_rectd <- sqrt(SSEtrg/nrow(TestRecy))
+rmse_rectd
+```
+
+Regression plots below
+```{r}
+par(mar = c(4, 4, 2, 2), mfrow = c(2, 2))
+plot(linRegRecTD2, which = c(1:3,5))
+
+```
+I would say that it appears that these charts do not like the prediction.  Touchdowns are infrequent and random/unpredictable.  If a receiver has an amazing season and gets 100 receptions, if they had 10 Tds it would be an All-pro year for them.
+
+Additional summary statistics
+```{r}
+confint(linRegRecTD2)
+
+coef(summary(linRegRecTD2))
+
+anova(linRegRecTD2)
+
+```
+
+##Passing
+
+###Passing Yards
+```{r}
+linRegQBpyds <- lm(py ~ height+ weight+cold_weather + hot_weather + home_team_1+ temp+
+                  age+ forty1 + vertical1 + shuttle1+ cone1 + ARI + ATL + BAL + BUF + CAR + CHI+
+                  CIN + CLE + DAL + DEN + DET + GB + HOU + IND + JAC + KC + MIA + MINN + NE + NOR + NYG+
+                  NYJ + OAK + PHI + PIT +SD + SEA + STL + TB + TEN + WAS + avg_recy_plyr+avg_recy_pos + 
+                    avg_recy_team + avg_rec_plyr +avg_rec_pos + avg_rec_team +avg_trg_plyr + avg_trg_pos +
+                    avg_trg_team + avg_rectd_plyr + avg_rectd_pos +avg_rectd_team+
+                    avg_tdr_plyr + avg_tdr_pos + avg_tdr_team +
+                    avg_rbra_plyr + avg_rbra_pos +avg_rbra_team +
+                    avg_rbry_plyr + avg_rbry_pos +avg_rbry_team +
+                    avg_fuml_plyr + avg_fuml_pos +avg_fuml_team +
+                    avg_qbpy_plyr + avg_qbpy_pos +avg_qbpy_team +
+                    avg_qbpa_plyr + avg_qbpa_pos +avg_qbpa_team+
+                    avg_qbpc_plyr + avg_qbpc_pos +avg_qbpc_team +
+                    avg_qbints_plyr + avg_qbints_pos +avg_qbints_team +
+                    avg_qbtdp_plyr + avg_qbtdp_pos +avg_qbtdp_team + grass_1 +
+                  bad_weather_1, data = TrainRecy)
+
+summary(linRegQBpyds)
 
 
-So, this goes on and on for each type of stat.  I have the code saved, I feel this is getting a litte redundant.
+```
+
+####Second run
+```{r}
+linRegQBpyds2 <- lm(py ~ cold_weather + BUF + PHI+ avg_qbpy_plyr+ 
+                     bad_weather_1, data = TrainRecy)
+
+summary(linRegQBpyds2)
+```
+This prediction actually turned out to be pretty strong (R2 0.87) and we did it with only 5 variables!  This makes sense to me.  QB is a 1 player position, with a significant investment in the player.  A QB will get time to mature and prove himself good or bad.
+
+Testing the data, we see that the training set and the test set are similar.  The model seems to hold up through testing
+```{r}
+PydsdPredicted <- predict(linRegQBpyds2, newdata = TestRecy)
+
+SSEpyds <- sum((PydsdPredicted - TestRecy$py)^2)
+SSTpyds <- sum((mean(nfl_data$py)-TestRecy$py)^2)
+r2_pyds <- 1 - SSEpyds/SSTpyds 
+r2_pyds
+rmse_pyds <- sqrt(SSEpyds/nrow(TestRecy))
+rmse_pyds
+```
+
+Below are the regression plots:
+```{r}
+par(mar = c(4, 4, 2, 2), mfrow = c(2, 2))
+plot(linRegQBpyds2, which = c(1:3,5))
+```
+The normal Q-Q shows are data has extreme values, and means the data is probably not normally distributed
+
+Some more summary statistics:
+```{r}
+confint(linRegQBpyds2)
+
+coef(summary(linRegQBpyds2))
+
+anova(linRegQBpyds2)
+
+```
+Conclusion, this predicts well, but it seems like this could be driven by some chance.  QB statistics remind me of baseball statistics.  One batter vs One pitcher.  A QB is really like a pitcher or a batter.  The opponent is more complex, however one side of the equation is "controlled".
+
+###Pass completions
+```{r}
+linRegQBpc <- lm(pc ~ height+ weight+cold_weather + hot_weather + home_team_1+ temp+
+                   age+ forty1 + vertical1 + shuttle1+ cone1 + ARI + ATL + BAL + BUF + CAR + CHI+
+                   CIN + CLE + DAL + DEN + DET + GB + HOU + IND + JAC + KC + MIA + MINN + NE + NOR + NYG+
+                   NYJ + OAK + PHI + PIT +SD + SEA + STL + TB + TEN + WAS +avg_recy_plyr+avg_recy_pos + 
+                   avg_recy_team + avg_rec_plyr +avg_rec_pos + avg_rec_team +avg_trg_plyr + avg_trg_pos +
+                   avg_trg_team + avg_rectd_plyr + avg_rectd_pos +avg_rectd_team+
+                   avg_tdr_plyr + avg_tdr_pos + avg_tdr_team +
+                   avg_rbra_plyr + avg_rbra_pos +avg_rbra_team +
+                   avg_rbry_plyr + avg_rbry_pos +avg_rbry_team +
+                   avg_fuml_plyr + avg_fuml_pos +avg_fuml_team +
+                   avg_qbpy_plyr + avg_qbpy_pos +avg_qbpy_team +
+                   avg_qbpa_plyr + avg_qbpa_pos +avg_qbpa_team+
+                   avg_qbpc_plyr + avg_qbpc_pos +avg_qbpc_team +
+                   avg_qbints_plyr + avg_qbints_pos +avg_qbints_team +
+                   avg_qbtdp_plyr + avg_qbtdp_pos +avg_qbtdp_team + grass_1 +
+                   bad_weather_1 , data = TrainRecy)
+summary(linRegQBpc)
+
+```
+
+####Second run
+```{r}
+linRegQBpc2 <- lm(pc ~ cold_weather + BUF + CLE+ HOU + KC+ PHI+ avg_qbpc_plyr+  
+                    bad_weather_1, data = TrainRecy)
+
+summary(linRegQBpc2)
+```
+Again, R2 is very strong, model stays strong when model is shrunk to 8 variables.  Not surprising (to me) bad weather and cold weather hurt completions.  It is harder to throw a ball in bad weather and catch a ball in bad weather.
+
+Testing the data, we see that the training set and the test set are similar.  The model seems to hold up through testing
+```{r}
+PcPredicted <- predict(linRegQBpc2, newdata = TestRecy)
+
+SSEpc <- sum((PcPredicted - TestRecy$pc)^2)
+SSTpc <- sum((mean(nfl_data$pc)-TestRecy$pc)^2)
+r2_pc <- 1 - SSEpc/SSTpc 
+r2_pc
+rmse_pc <- sqrt(SSEpc/nrow(TestRecy))
+rmse_pc
+
+```
+
+Regression plots:
+```{r}
+par(mar = c(4, 4, 2, 2), mfrow = c(2, 2))
+plot(linRegQBpc2, which = c(1:3,5))
+```
+Very similar problems/characteristics as we saw in yards
+
+
+Summary statistics:
+```{r}
+confint(linRegQBpc2)
+
+coef(summary(linRegQBpc2))
+
+anova(linRegQBpc2)
+```
+
+###Ints
+```{r}
+linRegQBInts <- lm(ints ~ height+ weight+cold_weather + hot_weather + home_team_1+ temp+ 
+                     age+ forty1 + vertical1 + shuttle1+ cone1 + ARI + ATL + BAL + BUF + CAR + CHI+
+                     CIN + CLE + DAL + DEN + DET + GB + HOU + IND + JAC + KC + MIA + MINN + NE + NOR + NYG+
+                     NYJ + OAK + PHI + PIT +SD + SEA + STL + TB + TEN + WAS +avg_recy_plyr+avg_recy_pos + 
+                     avg_recy_team + avg_rec_plyr +avg_rec_pos + avg_rec_team +avg_trg_plyr + avg_trg_pos +
+                     avg_trg_team + avg_rectd_plyr + avg_rectd_pos +avg_rectd_team+
+                     avg_tdr_plyr + avg_tdr_pos + avg_tdr_team +
+                     avg_rbra_plyr + avg_rbra_pos +avg_rbra_team +
+                     avg_rbry_plyr + avg_rbry_pos +avg_rbry_team +
+                     avg_fuml_plyr + avg_fuml_pos +avg_fuml_team +
+                     avg_qbpy_plyr + avg_qbpy_pos +avg_qbpy_team +
+                     avg_qbpa_plyr + avg_qbpa_pos +avg_qbpa_team+
+                     avg_qbpc_plyr + avg_qbpc_pos +avg_qbpc_team +
+                     avg_qbints_plyr + avg_qbints_pos +avg_qbints_team +
+                     avg_qbtdp_plyr + avg_qbtdp_pos +avg_qbtdp_team + grass_1 +
+                     bad_weather_1 , data = TrainRecy)
+summary(linRegQBInts) 
+```
+
+####Second run
+```{r}
+linRegQBInts2 <- lm(ints ~ avg_qbints_plyr, data = TrainRecy)
+
+summary(linRegQBInts2)
+
+```
+R2 of 0.4169, and really the only meaningful predictor was "how many interceptions have you thrown in the past".  Not an entirely amazing model, but at least we have something here.
+
+Testing the data, we see that the training set and the test set are similar.  The model seems to hold up through testing
+```{r}
+PintPredicted <- predict(linRegQBInts2, newdata = TestRecy)
+
+SSEint <- sum((PintPredicted - TestRecy$ints)^2)
+SSTint <- sum((mean(nfl_data$ints)-TestRecy$ints)^2)
+r2_int <- 1 - SSEint/SSTint 
+r2_int
+rmse_int <- sqrt(SSEint/nrow(TestRecy))
+rmse_int
+
+```
+
+Regression plots:
+```{r}
+par(mar = c(4, 4, 2, 2), mfrow = c(2, 2))
+plot(linRegQBInts2, which = c(1:3,5))
+
+```
+
+Summary statistics:
+```{r}
+confint(linRegQBInts2)
+
+coef(summary(linRegQBInts2))
+
+anova(linRegQBInts2)
+
+```
+
+###Pass Attempts
+```{r}
+linRegQBpa <- lm(pa ~ height+ weight+cold_weather + hot_weather + home_team_1+ temp+
+                     age+ forty1 + vertical1 + shuttle1+ cone1 + ARI + ATL + BAL + BUF + CAR + CHI+
+                     CIN + CLE + DAL + DEN + DET + GB + HOU + IND + JAC + KC + MIA + MINN + NE + NOR + NYG+
+                     NYJ + OAK + PHI + PIT +SD + SEA + STL + TB + TEN + WAS +avg_recy_plyr+avg_recy_pos + 
+                   avg_recy_team + avg_rec_plyr +avg_rec_pos + avg_rec_team +avg_trg_plyr + avg_trg_pos +
+                   avg_trg_team + avg_rectd_plyr + avg_rectd_pos +avg_rectd_team+
+                   avg_tdr_plyr + avg_tdr_pos + avg_tdr_team +
+                   avg_rbra_plyr + avg_rbra_pos +avg_rbra_team +
+                   avg_rbry_plyr + avg_rbry_pos +avg_rbry_team +
+                   avg_fuml_plyr + avg_fuml_pos +avg_fuml_team +
+                   avg_qbpy_plyr + avg_qbpy_pos +avg_qbpy_team +
+                   avg_qbpa_plyr + avg_qbpa_pos +avg_qbpa_team+
+                   avg_qbpc_plyr + avg_qbpc_pos +avg_qbpc_team +
+                   avg_qbints_plyr + avg_qbints_pos +avg_qbints_team +
+                   avg_qbtdp_plyr + avg_qbtdp_pos +avg_qbtdp_team + grass_1 +
+                     bad_weather_1 , data = nfl_data)
+
+summary(linRegQBpa)
+
+```
+
+####Second Run
+```{r}
+linRegQBpa2 <- lm(pa~ + cold_weather+ home_team_1+ age+ BUF + CLE+ DAL+ HOU + OAK + PHI+ 
+                    avg_qbpc_plyr+avg_qbints_plyr+avg_qbtdp_plyr, data = nfl_data)
+
+summary(linRegQBpa2)
+
+```
+R2 is strong.  This stat is the catalyst Ints, completions, TD's.  You have to attempt a pass in order to achieve a stat in any of these three categories.
+
+Testing the data, we see that the training set and the test set are similar.  The model seems to hold up through testing
+```{r}
+PaPredicted <- predict(linRegQBpa2, newdata = TestRecy)
+
+SSEpa <- sum((PaPredicted - TestRecy$pa)^2)
+SSTpa <- sum((mean(nfl_data$pa)-TestRecy$pa)^2)
+r2_pa <- 1 - SSEpa/SSTpa 
+r2_pa
+rmse_pa <- sqrt(SSEpa/nrow(TestRecy))
+rmse_pa
+
+```
+
+Regression plots:
+```{r}
+par(mar = c(4, 4, 2, 2), mfrow = c(2, 2))
+plot(linRegQBpa2, which = c(1:3,5))
+```
+Very similar patterns to completions and yards.  Some strong tails, so the data may not be normally distributed
+
+Summary statistics:
+```{r}
+confint(linRegQBpa2)
+
+coef(summary(linRegQBpa2))
+
+anova(linRegQBpa2)
+
+```
+
+##Rushing Stats
+
+###Rushing Yards
+```{r}
+linRegRushYd <- lm(ry ~ height+ weight+cold_weather + hot_weather + home_team_1+ temp+
+                   age+ forty1 + vertical1 + shuttle1+ cone1 + ARI + ATL + BAL + BUF + CAR + CHI+
+                   CIN + CLE + DAL + DEN + DET + GB + HOU + IND + JAC + KC + MIA + MINN + NE + NOR + NYG+
+                   NYJ + OAK + PHI + PIT +SD + SEA + STL + TB + TEN + WAS + avg_recy_plyr+avg_recy_pos + 
+                   avg_recy_team + avg_rec_plyr +avg_rec_pos + avg_rec_team +avg_trg_plyr + avg_trg_pos +
+                   avg_trg_team + avg_rectd_plyr + avg_rectd_pos +avg_rectd_team+
+                   avg_tdr_plyr + avg_tdr_pos + avg_tdr_team +
+                   avg_rbra_plyr + avg_rbra_pos +avg_rbra_team +
+                   avg_rbry_plyr + avg_rbry_pos +avg_rbry_team +
+                   avg_fuml_plyr + avg_fuml_pos +avg_fuml_team +
+                   avg_qbpy_plyr + avg_qbpy_pos +avg_qbpy_team +
+                   avg_qbpa_plyr + avg_qbpa_pos +avg_qbpa_team+
+                   avg_qbpc_plyr + avg_qbpc_pos +avg_qbpc_team +
+                   avg_qbints_plyr + avg_qbints_pos +avg_qbints_team +
+                   avg_qbtdp_plyr + avg_qbtdp_pos +avg_qbtdp_team +
+                   grass_1 + bad_weather_1 , data = nfl_data)
+
+summary(linRegRushYd)
+```
+
+####Second Run
+```{r}
+linRegRushYd2 <- lm(ry ~ home_team_1 + age +avg_rbry_plyr, data = nfl_data)
+
+summary(linRegRushYd2)
+```
+
+Testing the data, we see that the training set and the test set are similar.  The model seems to hold up through testing
+```{r}
+RushydsPredicted <- predict(linRegRushYd2, newdata = TestRecy)
+
+SSEruyd <- sum((RushydsPredicted - TestRecy$ry)^2)
+SSTruyd <- sum((mean(nfl_data$ry)-TestRecy$ry)^2)
+r2_ruyd <- 1 - SSEruyd/SSTruyd 
+r2_ruyd
+rmse_ruyd <- sqrt(SSEruyd/nrow(TestRecy))
+rmse_ruyd
+
+```
+
+Regression plots:
+```{r}
+par(mar = c(4, 4, 2, 2), mfrow = c(2, 2))
+plot(linRegRushYd2, which = c(1:3,5))
+```
+
+Summary statistics:
+```{r}
+confint(linRegRushYd2)
+
+coef(summary(linRegRushYd2))
+
+anova(linRegRushYd2)
+```
+
+###Rushing attempts
+```{r}
+linRegRushAtt <- lm(ra ~ height+ weight+cold_weather + hot_weather + home_team_1+ temp+
+                     age+ forty1 + vertical1 + shuttle1+ cone1 + ARI + ATL + BAL + BUF + CAR + CHI+
+                     CIN + CLE + DAL + DEN + DET + GB + HOU + IND + JAC + KC + MIA + MINN + NE + NOR + NYG+
+                     NYJ + OAK + PHI + PIT +SD + SEA + STL + TB + TEN + WAS + avg_recy_plyr+avg_recy_pos + 
+                     avg_recy_team + avg_rec_plyr +avg_rec_pos + avg_rec_team +avg_trg_plyr + avg_trg_pos +
+                     avg_trg_team + avg_rectd_plyr + avg_rectd_pos +avg_rectd_team+
+                      avg_tdr_plyr + avg_tdr_pos + avg_tdr_team +
+                     avg_rbra_plyr + avg_rbra_pos +avg_rbra_team +
+                     avg_rbry_plyr + avg_rbry_pos +avg_rbry_team +
+                     avg_fuml_plyr + avg_fuml_pos +avg_fuml_team +
+                     avg_qbpy_plyr + avg_qbpy_pos +avg_qbpy_team +
+                     avg_qbpa_plyr + avg_qbpa_pos +avg_qbpa_team+
+                     avg_qbpc_plyr + avg_qbpc_pos +avg_qbpc_team +
+                     avg_qbints_plyr + avg_qbints_pos +avg_qbints_team +
+                     avg_qbtdp_plyr + avg_qbtdp_pos +avg_qbtdp_team +
+                     grass_1 + bad_weather_1 , data = nfl_data)
+
+summary(linRegRushAtt)
+```
+
+####Second run
+```{r}
+linRegRushAtt2 <- lm(ra ~ home_team_1 + age +avg_rbra_plyr, data = nfl_data)
+
+summary(linRegRushAtt2)
+```
+
+Testing the data, we see that the training set and the test set are similar.  The model seems to hold up through testing
+```{r}
+RushattPredicted <- predict(linRegRushAtt2, newdata = TestRecy)
+
+SSEruatt <- sum((RushattPredicted - TestRecy$ra)^2)
+SSTruatt <- sum((mean(nfl_data$ra)-TestRecy$ra)^2)
+r2_ruatt <- 1 - SSEruatt/SSTruatt 
+r2_ruatt
+rmse_ruatt <- sqrt(SSEruatt/nrow(TestRecy))
+rmse_ruatt
+
+```
+
+Regression plots:
+```{r}
+par(mar = c(4, 4, 2, 2), mfrow = c(2, 2))
+plot(linRegRushAtt2, which = c(1:3,2))
+
+```
+
+Summary statistics:
+```{r}
+confint(linRegRushAtt2)
+
+coef(summary(linRegRushAtt2))
+
+anova(linRegRushAtt2)
+```
+
+###Fumbles
+```{r}
+linRegFumble <- lm(fuml ~ height+ weight+cold_weather + hot_weather + home_team_1+ temp+
+                     age+ forty1 + vertical1 + shuttle1+ cone1 + ARI + ATL + BAL + BUF + CAR + CHI+
+                     CIN + CLE + DAL + DEN + DET + GB + HOU + IND + JAC + KC + MIA + MINN + NE + NOR + NYG+
+                     NYJ + OAK + PHI + PIT +SD + SEA + STL + TB + TEN + WAS + avg_recy_plyr+avg_recy_pos + 
+                     avg_recy_team + avg_rec_plyr +avg_rec_pos + avg_rec_team +avg_trg_plyr + avg_trg_pos +
+                     avg_trg_team + avg_rectd_plyr + avg_rectd_pos +avg_rectd_team+
+                     avg_tdr_plyr + avg_tdr_pos + avg_tdr_team +
+                     avg_rbra_plyr + avg_rbra_pos +avg_rbra_team +
+                     avg_rbry_plyr + avg_rbry_pos +avg_rbry_team +
+                     avg_fuml_plyr + avg_fuml_pos +avg_fuml_team +
+                     avg_qbpy_plyr + avg_qbpy_pos +avg_qbpy_team +
+                     avg_qbpa_plyr + avg_qbpa_pos +avg_qbpa_team+
+                     avg_qbpc_plyr + avg_qbpc_pos +avg_qbpc_team +
+                     avg_qbints_plyr + avg_qbints_pos +avg_qbints_team +
+                     avg_qbtdp_plyr + avg_qbtdp_pos +avg_qbtdp_team +
+                     grass_1 + bad_weather_1 , data = TrainRecy)
+
+summary(linRegFumble)
+```
+
+####Second run
+```{r}
+linRegFumble2 <- lm(fuml ~ avg_fuml_plyr + grass_1, data = TrainRecy)
+
+summary(linRegFumble2)
+
+```
+Definitely does not seem to be a good predictor
+
+Testing the data, we see that the training set and the test set are similar.  The model seems to hold up through testing
+```{r}
+FumblePredicted <- predict(linRegFumble2, newdata = TestRecy)
+
+SSEfum <- sum((FumblePredicted - TestRecy$fuml)^2)
+SSTfum <- sum((mean(nfl_data$fuml)-TestRecy$fuml)^2)
+r2_fum <- 1 - SSEfum/SSTfum 
+r2_fum
+rmse_fum <- sqrt(SSEfum/nrow(TestRecy))
+rmse_fum
+```
+
+Regression plots:
+```{r}
+par(mar = c(4, 4, 2, 2), mfrow = c(2, 2))
+plot(linRegFumble2, which = c(1:3,5))
+```
+The plots don't seem to confirm that this is a good model for the data
+
+Summary statistics:
+```{r}
+confint(linRegFumble2)
+
+coef(summary(linRegFumble2))
+
+anova(linRegFumble2)
+
+```
+
+
+## Conclusions
+
+Rushing and passing data seems to be something that linear regression has better predictions for that receiving.  This makes sense.  RB's and QB's are generally singular players on the field.  Both are heavily invested in by teams and are given a lot of touches every game.  Receiving is a little more spread out.  There are generally at minimum, 3 players in a receiving capacity (excluding the RB), 2 WR and a TE.  There can be up to 4 WR on the field, so trying to predict who gets the ball will be harder because it is more uncertain.
+
+RB's are negatively effected by age, the data supports this well known fact, I was glad to see that relationship.
+
+Fumbles and INTs are also going to be hard to predict because they are generally random, but highly dependent upon the player carrying the ball and the defense they are playing against.
+
+The data seems to have some skewness, so I may have to explore other options for predicting.
+
+Going forward, I would like to explore more fields, I have completely ignored the opponents in this analysis, and would like to add them in for the future.
+
+As mentioned above, baseball will be better for predicting because of the nature of the game:  One batter vs one pitcher.  I would like to build an analysis for baseball based on a similar method as I have used for this.
+
+## Appendix
+
+
 
 ###Charts
 WR targets by avg yards per player

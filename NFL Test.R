@@ -280,15 +280,17 @@ nfl_data_fields<- subset(nfl_data, select = c("height", "weight", "cold_weather"
                          "avg_qbints_team","avg_qbtdp_plyr","avg_qbtdp_pos","avg_qbtdp_team","grass_1",
                          "bad_weather_1"))
 
-cor_nfl <- cor(nfl_data_fields)
 
+
+cor_nfl <- cor(nfl_data_fields)
 image(cor_nfl)
+
 qplot(x=Var1, y=Var2, data=melt(cor(nfl_data_fields)), fill=value, geom="tile")+
   scale_fill_gradient2(limits=c(-1, 1))+
   theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 5),
         axis.text.y = element_text(size = 5))
 
-pairs(nfl_data_fields)
+
 
 #wr regression
 
@@ -319,6 +321,10 @@ linRegrecy2 <- lm(recy ~ avg_recy_plyr+grass_1+bad_weather_1, data = TrainRecy)
 
 summary(linRegrecy2)
 
+linRegrecyalone <- lm(recy ~ avg_recy_plyr, data = TrainRecy)
+
+summary(linRegrecyalone)
+
 RecyPredicted <- predict(linRegrecy2, newdata = TestRecy)
 
 SSErecy <- sum((RecyPredicted - TestRecy$recy)^2)
@@ -329,8 +335,8 @@ rmse_recy <- sqrt(SSErecy/nrow(TestRecy))
 rmse_recy
 
 
-par(mar = c(4, 4, 2, 2), mfrow = c(3, 2))
-plot(linRegrecy2, which = 1:6)
+par(mar = c(4, 4, 2, 2), mfrow = c(2, 2))
+plot(linRegrecy2, which = c(1,2,3,5))
 
 confint(linRegrecy2)
 
@@ -358,7 +364,7 @@ linRegrec <- lm(rec ~ height+ weight+cold_weather + hot_weather + home_team_1+ t
 
 summary(linRegrec)
   
-linRegrec2 <- lm(rec ~ temp + BAL + CHI+
+linRegrec2 <- lm(rec ~ temp + CHI+
                    CLE +
                    avg_rec_plyr+ grass_1+
                    bad_weather_1, data = TrainRecy)
@@ -374,8 +380,8 @@ r2_rec
 rmse_rec <- sqrt(SSErec/nrow(TestRecy))
 rmse_rec
 
-par(mar = c(4, 4, 2, 2), mfrow = c(3, 2))
-plot(linRegrec2, which = 1:6)
+par(mar = c(4, 4, 2, 2), mfrow = c(2, 2))
+plot(linRegrec2, which = c(1,2,3,5))
 
 confint(linRegrec2)
 
@@ -419,8 +425,8 @@ r2_trg
 rmse_trg <- sqrt(SSEtrg/nrow(TestRecy))
 rmse_trg
 
-par(mar = c(4, 4, 2, 2), mfrow = c(3, 2))
-plot(linRegrec2, which = 1:6)
+par(mar = c(4, 4, 2, 2), mfrow = c(2, 2))
+plot(linRegrec2, which = c(1:3,5))
 
 confint(linRegtrg2)
 
@@ -465,7 +471,7 @@ rmse_rectd <- sqrt(SSEtrg/nrow(TestRecy))
 rmse_rectd
 
 par(mar = c(4, 4, 2, 2), mfrow = c(3, 2))
-plot(linRegRecTD2, which = 1:6)
+plot(linRegRecTD2, which = c(1:3,5))
 
 confint(linRegRecTD2)
 
@@ -497,7 +503,7 @@ linRegQBpyds <- lm(py ~ height+ weight+cold_weather + hot_weather + home_team_1+
 
 summary(linRegQBpyds)
 
-linRegQBpyds2 <- lm(py ~ cold_weather + BUF + CLE+ HOU + PHI+ avg_qbpy_plyr+ 
+linRegQBpyds2 <- lm(py ~ cold_weather + BUF + PHI+ avg_qbpy_plyr+ 
                      bad_weather_1, data = TrainRecy)
 
 summary(linRegQBpyds2)
@@ -511,8 +517,8 @@ r2_pyds
 rmse_pyds <- sqrt(SSEpyds/nrow(TestRecy))
 rmse_pyds
 
-par(mar = c(4, 4, 2, 2), mfrow = c(3, 2))
-plot(linRegQBpyds2, which = 1:6)
+par(mar = c(4, 4, 2, 2), mfrow = c(2, 2))
+plot(linRegQBpyds2, which = c(1:3,5))
 
 confint(linRegQBpyds2)
 
@@ -550,14 +556,14 @@ summary(linRegQBpc2)
 PcPredicted <- predict(linRegQBpc2, newdata = TestRecy)
 
 SSEpc <- sum((PcPredicted - TestRecy$pc)^2)
-SSTpc <- sum((mean(nfl_data$py)-TestRecy$py)^2)
+SSTpc <- sum((mean(nfl_data$pc)-TestRecy$pc)^2)
 r2_pc <- 1 - SSEpc/SSTpc 
 r2_pc
 rmse_pc <- sqrt(SSEpc/nrow(TestRecy))
 rmse_pc
 
-par(mar = c(4, 4, 2, 2), mfrow = c(3, 2))
-plot(linRegQBpc2, which = 1:6)
+par(mar = c(4, 4, 2, 2), mfrow = c(2, 2))
+plot(linRegQBpc2, which = c(1:3,5))
 
 confint(linRegQBpc2)
 
@@ -586,7 +592,7 @@ linRegQBInts <- lm(ints ~ height+ weight+cold_weather + hot_weather + home_team_
                      bad_weather_1 , data = TrainRecy)
 summary(linRegQBInts) 
 
-linRegQBInts2 <- lm(ints ~ cold_weather + temp + age + avg_qbints_plyr, data = TrainRecy)
+linRegQBInts2 <- lm(ints ~ avg_qbints_plyr, data = TrainRecy)
 
 summary(linRegQBInts2)
 
@@ -599,8 +605,8 @@ r2_int
 rmse_int <- sqrt(SSEint/nrow(TestRecy))
 rmse_int
 
-par(mar = c(4, 4, 2, 2), mfrow = c(3, 2))
-plot(linRegQBInts2, which = 1:6)
+par(mar = c(4, 4, 2, 2), mfrow = c(2, 2))
+plot(linRegQBInts2, which = c(1:3,5))
 
 confint(linRegQBInts2)
 
@@ -645,8 +651,8 @@ r2_pa
 rmse_pa <- sqrt(SSEpa/nrow(TestRecy))
 rmse_pa
 
-par(mar = c(4, 4, 2, 2), mfrow = c(3, 2))
-plot(linRegQBpa2, which = 1:6)
+par(mar = c(4, 4, 2, 2), mfrow = c(2, 2))
+plot(linRegQBpa2, which = c(1:3,5))
 
 confint(linRegQBpa2)
 
@@ -704,8 +710,8 @@ r2_ruyd
 rmse_ruyd <- sqrt(SSEruyd/nrow(TestRecy))
 rmse_ruyd
 
-par(mar = c(4, 4, 2, 2), mfrow = c(3, 2))
-plot(linRegRushYd2, which = 1:6)
+par(mar = c(4, 4, 2, 2), mfrow = c(2, 2))
+plot(linRegRushYd2, which = c(1:3,5))
 
 confint(linRegRushYd2)
 
@@ -737,7 +743,7 @@ linRegRushAtt <- lm(ra ~ height+ weight+cold_weather + hot_weather + home_team_1
 
 summary(linRegRushAtt)
 
-linRegRushAtt2 <- lm(ry ~ home_team_1 + age +avg_rbra_plyr, data = nfl_data)
+linRegRushAtt2 <- lm(ra ~ home_team_1 + age +avg_rbra_plyr, data = nfl_data)
 
 summary(linRegRushAtt2)
 
@@ -750,8 +756,8 @@ r2_ruatt
 rmse_ruatt <- sqrt(SSEruatt/nrow(TestRecy))
 rmse_ruatt
 
-par(mar = c(4, 4, 2, 2), mfrow = c(3, 2))
-plot(linRegRushAtt2, which = 1:6)
+par(mar = c(4, 4, 2, 2), mfrow = c(2, 2))
+plot(linRegRushAtt2, which = c(1:3,2))
 
 confint(linRegRushAtt2)
 
@@ -794,8 +800,8 @@ r2_fum
 rmse_fum <- sqrt(SSEfum/nrow(TestRecy))
 rmse_fum
 
-par(mar = c(4, 4, 2, 2), mfrow = c(3, 2))
-plot(linFumble2, which = 1:6)
+par(mar = c(4, 4, 2, 2), mfrow = c(2, 2))
+plot(linRegFumble2, which = c(1:3,5))
 
 confint(linRegFumble2)
 
@@ -826,6 +832,20 @@ ggplot(data = nfl_data, aes(x = avg_recy_plyr, y = avg_trg_plyr, col = Teams ))+
 ggplot(data = subset(nfl_data, pos1 =="WR"), aes(x = age, y = avg_recy_age/age_count, col = Teams))+
   geom_bar(data = subset(nfl_data, pos1 == "WR"), stat = "identity")
 
+nfl_data$pos_we_care <- c(nfl_data$pos1["WR"], nfl_data$pos1["TE"], nfl_data$pos1["WR"])
+
+
+glimpse(nfl_data)
+
+nfl_data <- nfl_data %>%
+  group_by(pos1)%>%
+  mutate(rank_pos = rank(avg_recy_plyr, ties.method = "max"))
+
+
+ggplot(subset(nfl_data, rank_pos >10 & pos1 %in% c("RB", "WR", "TE")), aes(x = avg_recy_plyr, y = avg_trg_plyr, col = Teams ))+
+  geom_point(data = subset(nfl_data, rank_pos >10 & pos1 %in% c("RB", "WR", "TE")))+
+  geom_text(data = subset(nfl_data, rank_pos >10 &pos1 %in% c("RB", "WR", "TE")), aes(label = pname), size = 2.5)+
+  facet_wrap( ~ pos1, ncol = 3)
 
 
 write.csv(nfl_data, "C:/Users/Rich Lindberg/Documents/R/NFLCapstoneTest/testfile.csv")
